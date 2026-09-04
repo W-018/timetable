@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#4c6ef5">
+<meta name="description" content="简洁的课程表：添加课程、按周与单双周查看">
+<!-- iOS 添加到主屏幕 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="我的课表">
+<link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
+<title>我的课表</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/icon-192.png">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div id="app">
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="brand">
+      <h1>我的课表</h1>
+      <span class="term-name" id="termName"></span>
+    </div>
+    <button class="icon-btn" id="openSettings" aria-label="设置">⚙</button>
+  </header>
+
+  <!-- 周导航 -->
+  <section class="weekbar">
+    <button class="nav-btn" id="prevWeek" aria-label="上一周">‹</button>
+    <button class="week-pick" id="weekPick">
+      <span class="week-main" id="weekLabel">—</span>
+      <span class="week-sub" id="weekRange">—</span>
+    </button>
+    <button class="nav-btn" id="nextWeek" aria-label="下一周">›</button>
+    <button class="today-btn" id="goToday">今天</button>
+  </section>
+  <input type="date" id="datePicker" hidden>
+
+  <!-- 日期条 -->
+  <nav class="daystrip" id="daystrip"></nav>
+
+  <!-- 课表 -->
+  <main class="board-wrap">
+    <table class="board" id="board"></table>
+    <div class="empty-hint" id="emptyHint" hidden>课表还是空的<br>点右下角 <b>＋</b> 添加第一节课吧</div>
+  </main>
+
+  <div class="footer-note" id="footNote"></div>
+
+  <!-- 添加按钮 -->
+  <button class="fab" id="fabAdd" aria-label="添加课程">＋</button>
+</div>
+
+<!-- 课程表单弹层 -->
+<div class="sheet-mask" id="formMask" hidden>
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="formTitle">添加课程</h2>
+      <button class="sheet-close" id="closeForm">✕</button>
+    </div>
+    <div class="sheet-body">
+      <label class="field">
+        <span>课程名称 *</span>
+        <input id="fName" type="text" placeholder="例如：高等数学" maxlength="20">
+      </label>
+      <label class="field">
+        <span>班级</span>
+        <input id="fClass" type="text" placeholder="例如：软件 2301（选填）" maxlength="20">
+      </label>
+      <label class="field">
+        <span>老师</span>
+        <input id="fTeacher" type="text" placeholder="例如：李明（选填）" maxlength="20">
+      </label>
+      <div class="field">
+        <span>星期</span>
+        <div class="chips" id="fDay"></div>
+      </div>
+      <div class="field">
+        <span>节次</span>
+        <div class="sec-pick">
+          <select id="fStartSec"></select>
+          <em>至</em>
+          <select id="fEndSec"></select>
+          <em>节</em>
+        </div>
+      </div>
+      <div class="field">
+        <span>周次</span>
+        <div class="seg" id="fWeekType">
+          <button type="button" data-v="all" class="on">每周</button>
+          <button type="button" data-v="odd">单周</button>
+          <button type="button" data-v="even">双周</button>
+        </div>
+        <label class="rng-toggle" for="fDateOn">
+          <input type="checkbox" id="fDateOn">
+          <span>只在指定日期内上课</span>
+        </label>
+        <div class="rng-pick" id="fDateLine" hidden>
+          <input type="date" id="fDateFrom">
+          <em>至</em>
+          <input type="date" id="fDateTo">
+        </div>
+        <p class="hint">例如选“周四 + 每周”并填 10月9日 ~ 10月29日：则这段时间内每周四都上课；选“单周/双周”则只在该区间内的单/双周周四上课。区间超出学期的部分不排课</p>
+      </div>
+      <div class="field">
+        <span>颜色</span>
+        <div class="palette" id="fColor"></div>
+      </div>
+      <div class="sheet-actions">
+        <button class="btn ghost danger" id="deleteCourse" hidden>删除</button>
+        <button class="btn primary" id="saveCourse">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 设置弹层 -->
+<div class="sheet-mask" id="settingsMask" hidden>
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2>设置</h2>
+      <button class="sheet-close" id="closeSettings">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="field">
+        <span>学期名称</span>
+        <input id="sTermName" type="text" placeholder="例如：2026 秋" maxlength="20">
+      </div>
+      <div class="field">
+        <span>学期开始日期</span>
+        <input id="sTermStart" type="date">
+        <p class="hint">该日所在周为第 1 周（单周），用于判断单双周与周次</p>
+      </div>
+      <div class="field">
+        <span>本学期共上几周</span>
+        <div class="numline">
+          <button type="button" class="step" data-for="sWeeks" data-d="-1">−</button>
+          <input id="sWeeks" type="number" min="1" max="40" value="16">
+          <button type="button" class="step" data-for="sWeeks" data-d="1">＋</button>
+          <em>周</em>
+        </div>
+        <p class="hint">从学期开始日期起共 N 周；超出该范围的日期会提示学期已结束</p>
+      </div>
+      <div class="field">
+        <span>每周显示</span>
+        <div class="seg" id="sDays">
+          <button type="button" data-v="5">周一~周五</button>
+          <button type="button" data-v="7">周一~周日</button>
+        </div>
+      </div>
+
+      <div class="field block">
+        <div class="field-head">
+          <span>每日节次时间</span>
+          <button class="mini" id="addTime">＋ 添加节次</button>
+        </div>
+        <div class="numline cntline">
+          <span>每日节数</span>
+          <button type="button" class="step" data-for="sCount" data-d="-1">−</button>
+          <input id="sCount" type="number" min="1" max="16" value="10">
+          <button type="button" class="step" data-for="sCount" data-d="1">＋</button>
+          <em>节</em>
+        </div>
+        <div class="lenline">
+          <span>每节时长</span>
+          <input id="sLength" type="number" min="20" max="180" value="45">
+          <em>分钟</em>
+          <button type="button" class="mini" id="applyLen">按新时长重算</button>
+        </div>
+        <p class="hint">填“每日节数”（如 6、8、10）可一键增减到对应节次行，也可点“添加节次”逐节加；每节只需填“上课时间”，下课时间自动 = 上课时间 + 每节时长</p>
+        <div class="time-list" id="timeList"></div>
+      </div>
+
+      <div class="sheet-actions">
+        <button class="btn ghost danger" id="clearAll">清空课表</button>
+        <button class="btn primary" id="saveSettings">保存设置</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 提示 -->
+<div class="toast" id="toast" hidden></div>
+
+<script src="./app.js"></script>
+</body>
+</html>
