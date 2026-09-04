@@ -1,11 +1,11 @@
 /* 我的课表 - Service Worker */
-const CACHE = 'timetable-v4';
+const CACHE = 'timetable-v5';
 const ASSETS = [
   './',
   './index.html',
-  './styles.css?v=20260904',
-  './app.js?v=20260904',
-  './manifest.webmanifest?v=20260904',
+  './styles.css?v=20260904b',
+  './app.js?v=20260904b',
+  './manifest.webmanifest?v=20260904b',
   './icons/icon-180.png',
   './icons/icon-192.png',
   './icons/icon-512.png'
