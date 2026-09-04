@@ -127,9 +127,12 @@
     formMask: $('formMask'), settingsMask: $('settingsMask'),
     formTitle: $('formTitle'), fName: $('fName'), fClass: $('fClass'), fTeacher: $('fTeacher'), fDay: $('fDay'),
     fStartSec: $('fStartSec'), fEndSec: $('fEndSec'), fWeekType: $('fWeekType'),
-    fDateOn: $('fDateOn'), fDateFrom: $('fDateFrom'), fDateTo: $('fDateTo'), fDateLine: $('fDateLine'),
+    fWeekScope: $('fWeekScope'), fWeekLine: $('fWeekLine'), fWeekFrom: $('fWeekFrom'), fWeekTo: $('fWeekTo'),
+    fDateFrom: $('fDateFrom'), fDateTo: $('fDateTo'), fDateLine: $('fDateLine'),
     fColor: $('fColor'),
-    deleteCourse: $('deleteCourse'), sTermName: $('sTermName'), sTermStart: $('sTermStart'),
+    deleteCourse: $('deleteCourse'),
+    shareMask: $('shareMask'), shareOut: $('shareOut'), shareIn: $('shareIn'),
+    sTermName: $('sTermName'), sTermStart: $('sTermStart'),
     sWeeks: $('sWeeks'), sLength: $('sLength'), sCount: $('sCount'),
     sDays: $('sDays'), timeList: $('timeList'), toast: $('toast')
   };
@@ -338,25 +341,28 @@
     if (course) el.fEndSec.value = course.end;
     el.fEndSec.value = el.fEndSec.value || el.fStartSec.value;
 
-    // 指定日期区间（如 10月9日 ~ 10月29日）
-    var dateOn = false;
+    // 周次范围：整学期 / 第 N~M 周 / 指定日期（可再配合上方 每周/单周/双周）
+    var scope = 'all';
+    var wf = 1, wl = weekTotal();
     var dFrom = data.termStart, dTo = termEndStr();
     if (course) {
-      if (course.dateFrom && course.dateTo) {
-        dFrom = course.dateFrom; dTo = course.dateTo; dateOn = true;
-      } else if (typeof course.weekFrom === 'number' || typeof course.weekTo === 'number') {
-        // 兼容旧版“第 X~Y 周”：换算为该周的起止日期再编辑
-        var wf = Math.max(1, parseInt(course.weekFrom, 10) || 1);
-        var wl = Math.min(weekTotal(), Math.max(wf, parseInt(course.weekTo, 10) || weekTotal()));
-        dFrom = fmtDate(termMonday(wf));
-        dTo = fmtDate(addDays(termMonday(wl), 6));
-        dateOn = true;
+      if (typeof course.weekFrom === 'number' || typeof course.weekTo === 'number') {
+        scope = 'range';
+        wf = Math.max(1, parseInt(course.weekFrom, 10) || 1);
+        wl = Math.min(weekTotal(), Math.max(wf, parseInt(course.weekTo, 10) || weekTotal()));
+      } else if (course.dateFrom && course.dateTo) {
+        scope = 'date';
+        dFrom = course.dateFrom;
+        dTo = course.dateTo;
       }
     }
-    el.fDateOn.checked = dateOn;
+    setWeekScopeUI(scope);
+    el.fWeekFrom.value = wf;
+    el.fWeekTo.value = wl;
+    el.fWeekLine.hidden = scope !== 'range';
     el.fDateFrom.value = dFrom;
     el.fDateTo.value = dTo;
-    el.fDateLine.hidden = !dateOn;
+    el.fDateLine.hidden = scope !== 'date';
 
     // 周类型
     var wt = course ? course.weekType : 'all';
@@ -401,6 +407,15 @@
     var b = el.fWeekType.querySelector('button.on');
     return b ? b.dataset.v : 'all';
   }
+  function setWeekScopeUI(scope) {
+    [].forEach.call(el.fWeekScope.querySelectorAll('button'), function (b) {
+      b.classList.toggle('on', b.dataset.v === scope);
+    });
+  }
+  function currentWeekScope() {
+    var b = el.fWeekScope.querySelector('button.on');
+    return b ? b.dataset.v : 'all';
+  }
   function currentColor() {
     var on = el.fColor.querySelector('.sw.on');
     if (on) {
@@ -424,17 +439,25 @@
     var className = el.fClass.value.trim();
     var teacher = el.fTeacher.value.trim();
 
-    // 指定日期区间（配合每周/单周/双周）
-    var dateOn = el.fDateOn.checked;
-    var dFrom = el.fDateFrom.value, dTo = el.fDateTo.value;
-    if (dateOn) {
+    // 周次范围：整学期 / 第 N~M 周 / 指定日期（可再配合每周/单周/双周）
+    var scope = currentWeekScope();
+    var wFrom = 0, wTo = 0, dFrom = '', dTo = '';
+    if (scope === 'range') {
+      wFrom = parseInt(el.fWeekFrom.value, 10);
+      wTo = parseInt(el.fWeekTo.value, 10);
+      if (!wFrom || !wTo) { toast('请填写开始与结束周数'); return; }
+      if (wFrom > wTo) { toast('结束周数不能早于开始周数'); return; }
+    } else if (scope === 'date') {
+      dFrom = el.fDateFrom.value;
+      dTo = el.fDateTo.value;
       if (!dFrom || !dTo) { toast('请选择开始与结束日期'); return; }
       if (dFrom > dTo) { toast('结束日期不能早于开始日期'); return; }
     }
 
     // 时间重叠检测（同一门课编辑时排除自身）
     var cand = { weekType: wt, day: day };
-    if (dateOn) { cand.dateFrom = dFrom; cand.dateTo = dTo; }
+    if (scope === 'range') { cand.weekFrom = wFrom; cand.weekTo = wTo; }
+    else if (scope === 'date') { cand.dateFrom = dFrom; cand.dateTo = dTo; }
     var clash = data.courses.some(function (c) {
       if (editingId && c.id === editingId) return false;
       if (c.day !== day) return false;
@@ -448,7 +471,8 @@
       name: name, className: className, teacher: teacher, day: day, start: start, end: end,
       weekType: wt, color: color
     };
-    if (dateOn) { rec.dateFrom = dFrom; rec.dateTo = dTo; }
+    if (scope === 'range') { rec.weekFrom = wFrom; rec.weekTo = wTo; }
+    else if (scope === 'date') { rec.dateFrom = dFrom; rec.dateTo = dTo; }
     if (editingId) {
       data.courses = data.courses.map(function (c) { return c.id === editingId ? rec : c; });
       toast('已保存修改');
@@ -477,6 +501,118 @@
     save();
     closeForm();
     toast('已删除');
+    render();
+  }
+
+  /* ---------------- 分享 / 导入课表 ---------------- */
+  function openShare() { el.shareMask.hidden = false; lockScroll(); }
+  function closeShare() { el.shareMask.hidden = true; unlockScroll(); }
+
+  // UTF-8 安全的 base64（避免中文乱码）
+  function toB64(str) {
+    var bytes = new TextEncoder().encode(str);
+    var bin = '';
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+  function fromB64(b64) {
+    var bin = atob(b64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    try { return new TextDecoder().decode(bytes); }
+    catch (e) { return decodeURIComponent(escape(bin)); }
+  }
+
+  function buildShareCode() {
+    return 'KB1.' + toB64(JSON.stringify({ v: 1, d: data }));
+  }
+  function parseShareCode(code) {
+    code = String(code || '').trim();
+    if (code.indexOf('KB1.') !== 0) throw new Error('bad prefix');
+    var obj = JSON.parse(fromB64(code.slice(4)));
+    if (!obj || obj.v !== 1 || !obj.d) throw new Error('bad payload');
+    var d = obj.d;
+    if (!d || !Array.isArray(d.courses) || !Array.isArray(d.times) || !d.times.length) throw new Error('bad data');
+    return d;
+  }
+  function normalizeImported(d) {
+    var base = defaultData();
+    var nd = {
+      termName: d.termName || base.termName,
+      termStart: d.termStart || base.termStart,
+      totalWeeks: Math.min(40, Math.max(1, parseInt(d.totalWeeks, 10) || 16)),
+      lessonLength: parseInt(d.lessonLength, 10) || 45,
+      showDays: (d.showDays === 5 || d.showDays === 7) ? d.showDays : 7,
+      times: d.times.slice(0, 16),
+      courses: []
+    };
+    d.courses.forEach(function (c) {
+      if (!c || !c.name || !(c.day >= 1) || !(c.start >= 1)) return;
+      var day = Math.min(7, Math.max(1, parseInt(c.day, 10) || 1));
+      var start = Math.min(16, Math.max(1, parseInt(c.start, 10) || 1));
+      var end = Math.min(16, Math.max(1, parseInt(c.end, 10) || 1));
+      if (end < start) end = start;
+      var n = {
+        id: c.id || uid(),
+        name: String(c.name).slice(0, 20),
+        className: c.className || '',
+        teacher: c.teacher || '',
+        day: day, start: start, end: end,
+        weekType: (c.weekType === 'odd' || c.weekType === 'even' || c.weekType === 'all') ? c.weekType : 'all',
+        color: /^#[0-9a-f]{6}$/i.test(c.color || '') ? c.color : PALETTE[0]
+      };
+      var wf = parseInt(c.weekFrom, 10), wt = parseInt(c.weekTo, 10);
+      if (!isNaN(wf) || !isNaN(wt)) {
+        n.weekFrom = Math.max(1, isNaN(wf) ? 1 : wf);
+        n.weekTo = Math.max(n.weekFrom, isNaN(wt) ? n.weekFrom : wt);
+      } else if (c.dateFrom && c.dateTo) {
+        n.dateFrom = c.dateFrom; n.dateTo = c.dateTo;
+      }
+      nd.courses.push(n);
+    });
+    return nd;
+  }
+  function doGenerate() {
+    var code = buildShareCode();
+    el.shareOut.value = code;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).then(
+        function () { toast('已生成并复制，直接发给同学吧'); },
+        function () { toast('已生成，请点下方“复制”'); }
+      );
+    } else {
+      toast('已生成，请点下方“复制”');
+    }
+  }
+  function copyShareCode() {
+    var ta = el.shareOut;
+    if (!ta.value) { toast('请先点“生成分享码”'); return; }
+    ta.focus(); ta.select();
+    try { ta.setSelectionRange(0, ta.value.length); } catch (e) {}
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    if (ok) { toast('已复制分享码'); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ta.value).then(
+        function () { toast('已复制分享码'); },
+        function () { toast('复制失败，请长按文本框手动复制'); }
+      );
+    } else {
+      toast('复制失败，请长按文本框手动复制');
+    }
+  }
+  function doImport() {
+    var code = el.shareIn.value.trim();
+    if (!code) { toast('请先粘贴分享码'); return; }
+    var d;
+    try { d = parseShareCode(code); }
+    catch (e) { toast('分享码无效，请检查是否完整粘贴'); return; }
+    if (!confirm('导入将覆盖当前整份课表与学期设置，确定继续吗？')) return;
+    data = normalizeImported(d);
+    save();
+    closeShare();
+    el.shareIn.value = '';
+    toast('导入成功');
     render();
   }
 
@@ -673,8 +809,24 @@
       if (lbl) lbl.classList.add('on');
     });
     el.fStartSec.addEventListener('change', syncEndOptions);
-    // 日期区间开关与联动（结束日期不低于开始日期）
-    el.fDateOn.addEventListener('change', function () { el.fDateLine.hidden = !el.fDateOn.checked; });
+    // 周次范围切换与联动
+    el.fWeekScope.addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      [].forEach.call(el.fWeekScope.children, function (x) { x.classList.remove('on'); });
+      b.classList.add('on');
+      var s = b.dataset.v;
+      el.fWeekLine.hidden = s !== 'range';
+      el.fDateLine.hidden = s !== 'date';
+    });
+    el.fWeekFrom.addEventListener('change', function () {
+      var f = parseInt(el.fWeekFrom.value, 10), t = parseInt(el.fWeekTo.value, 10);
+      if (!isNaN(f) && !isNaN(t) && f > t) el.fWeekTo.value = f;
+    });
+    el.fWeekTo.addEventListener('change', function () {
+      var f = parseInt(el.fWeekFrom.value, 10), t = parseInt(el.fWeekTo.value, 10);
+      if (!isNaN(f) && !isNaN(t) && t < f) el.fWeekFrom.value = t;
+    });
     el.fDateFrom.addEventListener('change', function () {
       if (el.fDateTo.value && el.fDateFrom.value > el.fDateTo.value) el.fDateTo.value = el.fDateFrom.value;
     });
@@ -686,6 +838,14 @@
     $('saveCourse').addEventListener('click', saveCourse);
     $('deleteCourse').addEventListener('click', deleteCourse);
     $('fabAdd').addEventListener('click', function () { openForm(null); });
+
+    // 分享 / 导入
+    $('openShare').addEventListener('click', openShare);
+    $('closeShare').addEventListener('click', closeShare);
+    el.shareMask.addEventListener('click', function (e) { if (e.target === el.shareMask) closeShare(); });
+    $('btnGenShare').addEventListener('click', doGenerate);
+    $('btnCopyShare').addEventListener('click', copyShareCode);
+    $('btnImportShare').addEventListener('click', doImport);
 
     // 设置
     $('openSettings').addEventListener('click', openSettings);
@@ -742,7 +902,8 @@
     // Esc 关闭弹层
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
-      if (!el.settingsMask.hidden) { el.settingsMask.hidden = true; unlockScroll(); }
+      if (!el.shareMask.hidden) { el.shareMask.hidden = true; unlockScroll(); }
+      else if (!el.settingsMask.hidden) { el.settingsMask.hidden = true; unlockScroll(); }
       else if (!el.formMask.hidden) { el.formMask.hidden = true; editingId = null; unlockScroll(); }
     });
   }
