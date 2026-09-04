@@ -532,6 +532,35 @@
     while (s.length % 4) s += '=';
     return fromB64(s);
   }
+  function bytesToB64Url(bytes) {
+    var bin = '';
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+  function b64UrlToBytes(s) {
+    s = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    var bin = atob(s);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  // 支持 DEFLATE 压缩的浏览器用 KB3 格式（更短），老浏览器回退 KB2
+  function deflateAvail() {
+    return typeof CompressionStream === 'function' && typeof DecompressionStream === 'function';
+  }
+  function compressBytes(bytes) {
+    var cs = new CompressionStream('deflate-raw');
+    var w = cs.writable.getWriter();
+    w.write(bytes); w.close();
+    return new Response(cs.readable).arrayBuffer();
+  }
+  function decompressBytes(bytes) {
+    var ds = new DecompressionStream('deflate-raw');
+    var w = ds.writable.getWriter();
+    w.write(bytes); w.close();
+    return new Response(ds.readable).arrayBuffer();
+  }
 
   // 课程对象 -> 紧凑数组：[名称,班级,教师,星期,起始节,结束节,周类型,颜色,可选周段/日期段]
   function packCourse(c) {
@@ -573,8 +602,8 @@
     return true;
   }
 
-  // 生成分享码（紧凑版 KB2，可读短；导入端兼容旧 KB1 码）
-  function buildShareCode() {
+  // 把整份课表打包为最精简对象（省略默认值）
+  function packPayload() {
     var d = data;
     var def = defaultData();
     var p = { s: d.termStart };
@@ -585,32 +614,55 @@
     if (d.showDays && d.showDays !== 7) p.d = d.showDays;
     if (!isDefaultTimes(d.times)) p.t = d.times.map(function (x) { return x.start + '-' + x.end; }).join(',');
     p.c = (d.courses || []).map(packCourse);
-    return 'KB2.' + toB64Url(JSON.stringify(p));
+    return p;
+  }
+  function unpackPayload(p) {
+    return {
+      termName: p.n || defaultData().termName,
+      termStart: p.s,
+      totalWeeks: p.w || 16,
+      lessonLength: p.h || 45,
+      showDays: p.d || 7,
+      times: p.t ? p.t.split(',').map(function (seg) {
+        var i = seg.indexOf('-');
+        return { start: seg.slice(0, i), end: seg.slice(i + 1) };
+      }) : DEFAULT_TIMES.map(function (x) { return { start: x[0], end: x[1] }; }),
+      courses: (p.c || []).map(unpackCourse)
+    };
+  }
+  // 生成分享码：KB3 为压缩后短码；浏览器不支持压缩时自动回退 KB2
+  function buildShareCode() {
+    var json = JSON.stringify(packPayload());
+    if (deflateAvail()) {
+      return compressBytes(new TextEncoder().encode(json)).then(function (ab) {
+        return 'KB3.' + bytesToB64Url(new Uint8Array(ab));
+      });
+    }
+    return Promise.resolve('KB2.' + toB64Url(json));
   }
   function parseShareCode(code) {
-    code = String(code || '').trim();
-    if (code.indexOf('KB2.') === 0) {
-      var p = JSON.parse(fromB64Url(code.slice(4)));
-      if (!p || !p.s || !Array.isArray(p.c)) throw new Error('bad payload');
-      return {
-        termName: p.n || defaultData().termName,
-        termStart: p.s,
-        totalWeeks: p.w || 16,
-        lessonLength: p.h || 45,
-        showDays: p.d || 7,
-        times: p.t ? p.t.split(',').map(function (seg) {
-          var i = seg.indexOf('-');
-          return { start: seg.slice(0, i), end: seg.slice(i + 1) };
-        }) : DEFAULT_TIMES.map(function (x) { return { start: x[0], end: x[1] }; }),
-        courses: (p.c || []).map(unpackCourse)
-      };
-    }
-    if (code.indexOf('KB1.') !== 0) throw new Error('bad prefix');
-    var obj = JSON.parse(fromB64(code.slice(4)));
-    if (!obj || obj.v !== 1 || !obj.d) throw new Error('bad payload');
-    var d = obj.d;
-    if (!d || !Array.isArray(d.courses) || !Array.isArray(d.times) || !d.times.length) throw new Error('bad data');
-    return d;
+    return Promise.resolve().then(function () {
+      code = String(code || '').trim();
+      if (code.indexOf('KB3.') === 0) {
+        if (!deflateAvail()) throw new Error('bad payload');
+        return decompressBytes(b64UrlToBytes(code.slice(4))).then(function (ab) {
+          var p = JSON.parse(new TextDecoder().decode(new Uint8Array(ab)));
+          if (!p || !p.s || !Array.isArray(p.c)) throw new Error('bad payload');
+          return unpackPayload(p);
+        });
+      }
+      if (code.indexOf('KB2.') === 0) {
+        var p2 = JSON.parse(fromB64Url(code.slice(4)));
+        if (!p2 || !p2.s || !Array.isArray(p2.c)) throw new Error('bad payload');
+        return unpackPayload(p2);
+      }
+      if (code.indexOf('KB1.') !== 0) throw new Error('bad prefix');
+      var obj = JSON.parse(fromB64(code.slice(4)));
+      if (!obj || obj.v !== 1 || !obj.d) throw new Error('bad payload');
+      var d = obj.d;
+      if (!d || !Array.isArray(d.courses) || !Array.isArray(d.times) || !d.times.length) throw new Error('bad data');
+      return d;
+    });
   }
   function normalizeImported(d) {
     var base = defaultData();
@@ -650,16 +702,17 @@
     return nd;
   }
   function doGenerate() {
-    var code = buildShareCode();
-    el.shareOut.value = code;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(code).then(
-        function () { toast('已生成并复制，直接发给同学吧'); },
-        function () { toast('已生成，请点下方“复制”'); }
-      );
-    } else {
-      toast('已生成，请点下方“复制”');
-    }
+    buildShareCode().then(function (code) {
+      el.shareOut.value = code;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).then(
+          function () { toast('已生成并复制，直接发给同学吧'); },
+          function () { toast('已生成，请点下方“复制”'); }
+        );
+      } else {
+        toast('已生成，请点下方“复制”');
+      }
+    }).catch(function () { toast('生成失败，请重试'); });
   }
   function copyShareCode() {
     var ta = el.shareOut;
@@ -681,16 +734,15 @@
   function doImport() {
     var code = el.shareIn.value.trim();
     if (!code) { toast('请先粘贴分享码'); return; }
-    var d;
-    try { d = parseShareCode(code); }
-    catch (e) { toast('分享码无效，请检查是否完整粘贴'); return; }
-    if (!confirm('导入将覆盖当前整份课表与学期设置，确定继续吗？')) return;
-    data = normalizeImported(d);
-    save();
-    closeShare();
-    el.shareIn.value = '';
-    toast('导入成功');
-    render();
+    parseShareCode(code).then(function (d) {
+      if (!confirm('导入将覆盖当前整份课表与学期设置，确定继续吗？')) return;
+      data = normalizeImported(d);
+      save();
+      closeShare();
+      el.shareIn.value = '';
+      toast('导入成功');
+      render();
+    }).catch(function () { toast('分享码无效，请检查是否完整粘贴'); });
   }
 
   /* ---------------- 设置 ---------------- */
