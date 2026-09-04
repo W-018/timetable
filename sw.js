@@ -1,5 +1,5 @@
 /* 我的课表 - Service Worker */
-const CACHE = 'timetable-v2';
+const CACHE = 'timetable-v3';
 const ASSETS = [
   './',
   './index.html',
