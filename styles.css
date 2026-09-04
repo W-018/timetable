@@ -240,19 +240,21 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 }
 .sec-pick em { font-style: normal; font-size: 13px; color: var(--muted); }
 
-/* 课程日期区间 */
-.rng-toggle {
-  display: flex; align-items: center; gap: 8px; margin-top: 10px;
-  font-size: 13px; color: #4a5368; cursor: pointer; user-select: none;
-}
-.rng-toggle input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
-.rng-pick { display: flex; align-items: center; gap: 6px; margin-top: 9px; }
+/* 课程周次范围（第 N~M 周 与 日期区间） */
+.rng-pick { display: flex; align-items: center; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
 .rng-pick input[type="date"] {
   flex: 1; min-width: 0; height: 42px; border-radius: 11px;
   border: 1px solid var(--line); background: var(--card); padding: 0 6px; outline: none;
   font-size: 13px; color: var(--ink);
 }
 .rng-pick em { font-style: normal; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.week-line span { font-size: 13px; color: #4a5368; white-space: nowrap; }
+.week-line input[type="number"] {
+  width: 58px; height: 42px; text-align: center; flex: none;
+  border: 1px solid var(--line); border-radius: 11px; background: var(--card); outline: none;
+  font-size: 14px;
+}
+.week-line input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 /* 时间表 */
 .time-list { display: flex; flex-direction: column; gap: 7px; }
@@ -313,3 +315,27 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   padding: 9px 16px; border-radius: 20px; z-index: 99; max-width: 80%;
   white-space: nowrap;
 }
+
+/* ===== 顶栏操作按钮 ===== */
+.top-actions { display: flex; align-items: center; gap: 8px; }
+
+/* ===== 分享 / 导入 ===== */
+.share-sec { margin-bottom: 20px; }
+.share-sec:last-child { margin-bottom: 4px; }
+.share-title { font-size: 15px; font-weight: 700; }
+.share-note { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 5px 0 10px; }
+.share-note b { color: #e0485c; font-weight: 600; }
+.share-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+.share-actions .btn { height: 44px; border-radius: 11px; font-size: 14px; }
+.share-actions .btn.primary { flex: 2; }
+.share-actions .btn.ghost { flex: 1; }
+.code-box {
+  width: 100%; min-height: 92px; resize: vertical;
+  border: 1px solid var(--line); border-radius: 11px; background: var(--card);
+  padding: 10px 12px; outline: none; color: #2a3142; font-size: 12px; line-height: 1.6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+  word-break: break-all;
+}
+.code-box:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.code-box[readonly] { color: #55607a; }
+.share-sec textarea + .btn { margin-top: 10px; }
