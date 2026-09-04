@@ -523,11 +523,88 @@
     catch (e) { return decodeURIComponent(escape(bin)); }
   }
 
+  // URL 安全 base64（不含 +/ 与 =，方便聊天软件原样转发）
+  function toB64Url(str) {
+    return toB64(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+  function fromB64Url(s) {
+    s = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    return fromB64(s);
+  }
+
+  // 课程对象 -> 紧凑数组：[名称,班级,教师,星期,起始节,结束节,周类型,颜色,可选周段/日期段]
+  function packCourse(c) {
+    var wtm = { all: 0, odd: 1, even: 2 };
+    var arr = [c.name, c.className || '', c.teacher || '', c.day, c.start, c.end, wtm[c.weekType] || 0];
+    var pi = PALETTE.indexOf(c.color);
+    arr.push(pi >= 0 ? pi : (c.color || PALETTE[0]));
+    if (typeof c.weekFrom === 'number') {
+      arr.push(c.weekFrom);
+      arr.push(Math.max(c.weekFrom, typeof c.weekTo === 'number' ? c.weekTo : c.weekFrom));
+    } else if (c.dateFrom && c.dateTo) {
+      arr.push(c.dateFrom); arr.push(c.dateTo);
+    }
+    return arr;
+  }
+  function unpackCourse(a) {
+    var WT = ['all', 'odd', 'even'];
+    var n = {
+      name: a[0], className: a[1] || '', teacher: a[2] || '',
+      day: +a[3], start: +a[4], end: +a[5],
+      weekType: WT[a[6]] || 'all',
+      color: typeof a[7] === 'number' ? (PALETTE[a[7]] || PALETTE[0]) : (a[7] || PALETTE[0])
+    };
+    if (a.length > 8) {
+      if (typeof a[8] === 'number') { // 第 N~M 周
+        var f = +a[8], t = (a[9] != null && +a[9] > f) ? +a[9] : f;
+        n.weekFrom = f; n.weekTo = t;
+      } else { // 指定日期区间
+        n.dateFrom = a[8]; n.dateTo = a[9] || a[8];
+      }
+    }
+    return n;
+  }
+  function isDefaultTimes(t) {
+    if (!t || t.length !== DEFAULT_TIMES.length) return false;
+    for (var i = 0; i < t.length; i++) {
+      if (t[i].start !== DEFAULT_TIMES[i][0] || t[i].end !== DEFAULT_TIMES[i][1]) return false;
+    }
+    return true;
+  }
+
+  // 生成分享码（紧凑版 KB2，可读短；导入端兼容旧 KB1 码）
   function buildShareCode() {
-    return 'KB1.' + toB64(JSON.stringify({ v: 1, d: data }));
+    var d = data;
+    var def = defaultData();
+    var p = { s: d.termStart };
+    if (d.termName && d.termName !== def.termName) p.n = d.termName;
+    var tw = weekTotal();
+    if (tw !== 16) p.w = tw;
+    if ((d.lessonLength || 45) !== 45) p.h = d.lessonLength;
+    if (d.showDays && d.showDays !== 7) p.d = d.showDays;
+    if (!isDefaultTimes(d.times)) p.t = d.times.map(function (x) { return x.start + '-' + x.end; }).join(',');
+    p.c = (d.courses || []).map(packCourse);
+    return 'KB2.' + toB64Url(JSON.stringify(p));
   }
   function parseShareCode(code) {
     code = String(code || '').trim();
+    if (code.indexOf('KB2.') === 0) {
+      var p = JSON.parse(fromB64Url(code.slice(4)));
+      if (!p || !p.s || !Array.isArray(p.c)) throw new Error('bad payload');
+      return {
+        termName: p.n || defaultData().termName,
+        termStart: p.s,
+        totalWeeks: p.w || 16,
+        lessonLength: p.h || 45,
+        showDays: p.d || 7,
+        times: p.t ? p.t.split(',').map(function (seg) {
+          var i = seg.indexOf('-');
+          return { start: seg.slice(0, i), end: seg.slice(i + 1) };
+        }) : DEFAULT_TIMES.map(function (x) { return { start: x[0], end: x[1] }; }),
+        courses: (p.c || []).map(unpackCourse)
+      };
+    }
     if (code.indexOf('KB1.') !== 0) throw new Error('bad prefix');
     var obj = JSON.parse(fromB64(code.slice(4)));
     if (!obj || obj.v !== 1 || !obj.d) throw new Error('bad payload');
