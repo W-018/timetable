@@ -1,5 +1,5 @@
 /* 我的课表 - Service Worker */
-const CACHE = 'timetable-v3';
+const CACHE = 'timetable-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -26,34 +26,22 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
 
-  // 页面导航：优先联网更新（避免旧缓存挡住新版本），离线时回退缓存
-  if (e.request.mode === 'navigate') {
-    e.respondWith(
-      fetch(e.request)
-        .then((res) => {
+  // 网络优先：有网时永远取最新版，并顺手更新缓存；断网时才回退已缓存版本
+  e.respondWith(
+    fetch(e.request)
+      .then((res) => {
+        if (res && res.ok && e.request.url.startsWith(self.location.origin)) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(e.request, copy));
-          return res;
+        }
+        return res;
+      })
+      .catch(() =>
+        caches.match(e.request, { cacheName: CACHE }).then((hit) => {
+          if (hit) return hit;
+          if (e.request.mode === 'navigate') return caches.match('./index.html', { cacheName: CACHE });
+          return Response.error();
         })
-        .catch(() =>
-          caches.match(e.request).then((hit) => hit || caches.match('./index.html'))
-        )
-    );
-    return;
-  }
-
-  e.respondWith(
-    caches.match(e.request).then((hit) => {
-      if (hit) return hit;
-      return fetch(e.request)
-        .then((res) => {
-          if (res && res.ok && e.request.url.startsWith(self.location.origin)) {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(e.request, copy));
-          }
-          return res;
-        })
-        .catch(() => hit);
-    })
+      )
   );
 });
