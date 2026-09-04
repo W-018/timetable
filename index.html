@@ -25,7 +25,10 @@
       <h1>我的课表</h1>
       <span class="term-name" id="termName"></span>
     </div>
-    <button class="icon-btn" id="openSettings" aria-label="设置">⚙</button>
+    <div class="top-actions">
+      <button class="icon-btn" id="openShare" aria-label="分享或导入课表">⇪</button>
+      <button class="icon-btn" id="openSettings" aria-label="设置">⚙</button>
+    </div>
   </header>
 
   <!-- 周导航 -->
@@ -95,16 +98,24 @@
           <button type="button" data-v="odd">单周</button>
           <button type="button" data-v="even">双周</button>
         </div>
-        <label class="rng-toggle" for="fDateOn">
-          <input type="checkbox" id="fDateOn">
-          <span>只在指定日期内上课</span>
-        </label>
+        <div class="seg" id="fWeekScope">
+          <button type="button" data-v="all" class="on">整学期</button>
+          <button type="button" data-v="range">第 N~M 周</button>
+          <button type="button" data-v="date">指定日期</button>
+        </div>
+        <div class="rng-pick week-line" id="fWeekLine" hidden>
+          <span>第</span>
+          <input type="number" id="fWeekFrom" min="1" max="40" value="1">
+          <span>周到第</span>
+          <input type="number" id="fWeekTo" min="1" max="40" value="8">
+          <span>周</span>
+        </div>
         <div class="rng-pick" id="fDateLine" hidden>
           <input type="date" id="fDateFrom">
           <em>至</em>
           <input type="date" id="fDateTo">
         </div>
-        <p class="hint">例如选“周四 + 每周”并填 10月9日 ~ 10月29日：则这段时间内每周四都上课；选“单周/双周”则只在该区间内的单/双周周四上课。区间超出学期的部分不排课</p>
+        <p class="hint">例：“周四 + 单周 + 第 1~8 周”= 只在第 1~8 周里的单周周四上课；想只上一段日期就选“指定日期”。超出学期周数的部分不会排课</p>
       </div>
       <div class="field">
         <span>颜色</span>
@@ -178,6 +189,33 @@
       <div class="sheet-actions">
         <button class="btn ghost danger" id="clearAll">清空课表</button>
         <button class="btn primary" id="saveSettings">保存设置</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 分享 / 导入弹层 -->
+<div class="sheet-mask" id="shareMask" hidden>
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2>分享 / 导入课表</h2>
+      <button class="sheet-close" id="closeShare">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="share-sec">
+        <p class="share-title">① 分享我的课表</p>
+        <p class="share-note">把整份课表（含学期设置）生成一串代码发给同学，对方粘贴即可导入，不用手动录入。</p>
+        <div class="share-actions">
+          <button class="btn primary" id="btnGenShare">生成分享码</button>
+          <button class="btn ghost" id="btnCopyShare">复制</button>
+        </div>
+        <textarea class="code-box" id="shareOut" rows="4" readonly spellcheck="false" placeholder="点“生成分享码”后，这里会出现一串代码"></textarea>
+      </div>
+      <div class="share-sec">
+        <p class="share-title">② 导入别人的课表</p>
+        <p class="share-note">粘贴对方发来的分享码后点导入。<b>注意：导入会覆盖你当前整份课表与学期设置</b>，请先确认。</p>
+        <textarea class="code-box" id="shareIn" rows="4" spellcheck="false" placeholder="把分享码粘贴到这里…"></textarea>
+        <button class="btn primary" id="btnImportShare">导入课表</button>
       </div>
     </div>
   </div>
